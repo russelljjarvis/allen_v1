@@ -32,6 +32,8 @@ edge_files = [File(data_files=n["edges_file"],
 node_to_pop_id_dtype = np.dtype([("layer", object), ("dynamics_params", object), 
                                  ("pop_id", np.uint32)])
 
+edge_type_dtype = np.dtype([("delay", float), ("dynamics_params", object)])
+
 # Loop through node files
 print("Nodes")
 pop_node_dict = {}
@@ -76,8 +78,19 @@ for f in edge_files:
     for pop in f.edges.populations:
         print(f"\t{pop.name} ({pop.source_population}->{pop.target_population})")
         
+        # Get edge types as Pandas dataframe
         edge_types_df = pop.edge_types_table.to_dataframe()
-        print(f"\t{len(edge_types_df)} total edge types")
+
+        # Check that they start at zero and are contiguous
+        assert edge_types_df.index[0] == 0
+        assert edge_types_df.index[-1] == (len(edge_types_df) - 1)
+        
+        
+        edge_type_map = np.empty(len(edge_types_df), dtype=edge_type_dtype)
+        for (d, p), df in edge_types_df.groupby(["delay", "dynamics_params"]):
+            edge_type_map["delay"][df.index] = d
+            edge_type_map["dynamics_params"][df.index] = p
+        print(f"\t{len(edge_types_df)} total edge types, {")
         assert False
         # **TODO** group edge type ids by dynamics_params i.e. receptor
         # Get node to pop ID lookup table for source and target populations
@@ -92,7 +105,9 @@ for f in edge_files:
         source_pop_id = source_node_to_pop_id[:][pop._source_node_id_ds[()]]
         target_pop_id = target_node_to_pop_id[:][pop._target_node_id_ds[()]]
         
-        edge_df = pd.DataFrame(data={"edge_type_id": pop._pop_group["edge_type_id"][()],
+        edge_type = edge_type_map[:][pop._pop_group["edge_type_id"][()]]
+        
+        edge_df = pd.DataFrame(data={"edge_type_id": 
                                      "source_layer": source_pop_id["layer"],
                                      "source_dynamics_params": source_pop_id["dynamics_params"],
                                      "source_pop_id": source_pop_id["pop_id"],
