@@ -1,17 +1,19 @@
-from collections import defaultdict, namedtuple
-from os import chdir
-from time import perf_counter
+import json
+import numpy as np
+import pandas as pd
+import genn_models
 
 from h5py import File
 #from sonata.circuit import File
 from sonata.config import SonataConfig
+from pygenn.genn_model import GeNNModel
 
+from collections import defaultdict, namedtuple
+from os import chdir
+from time import perf_counter
 
-import numpy as np
-import pandas as pd
-
-import pygenn
-
+def get_glif3_param_val_vars(dynamics_params):
+    pass
 
 node_id_lookup_dtype = np.dtype([("id", np.uint32), ("index", np.uint32)])
 
@@ -19,9 +21,6 @@ node_id_lookup_dtype = np.dtype([("id", np.uint32), ("index", np.uint32)])
 chdir("v1_point")
 cfg = SonataConfig.from_json("config.json")
 
-# Create model and set timestamp
-model = pygenn.genn_model.GeNNModel()
-model.dT = cfg.dt
 
 # Open HDF5 and CSV files, specified by config
 node_files = [(File(n["nodes_file"], "r"), 
@@ -116,3 +115,20 @@ for edges, edge_types in edge_files:
 
             print(f"\t\t\t{len(pop_group_df)} edges in {len(pop_edge_dict[name])} homogeneous populations")
         print(f"\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
+
+
+# Create model and set timestamp
+model = GeNNModel()
+model.dT = cfg.dt
+
+# Loop through populations
+for pop_name, pops in pop_node_dict.items():
+    # Loop through nodes and grouping of GeNN populations within this
+    for pop_nodes, pop_grouping in pops:
+        assert len(pop_grouping) > 0
+        
+        print(f"{pop_name}_{pop_grouping[0]}")
+        if len(pop_grouping) == 2:
+            print("\tPoint process")
+        else:
+            print("\tVirtual")
