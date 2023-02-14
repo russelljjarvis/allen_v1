@@ -13,6 +13,8 @@ from collections import defaultdict, namedtuple
 from os import chdir
 from time import perf_counter
 
+def get_psc_alpha_param_val_vars(cfg, dynamic_params):
+    
 def get_glif3_param_val_vars(cfg, dynamics_params):
     with open(os.path.join(cfg.point_neuron_models_dir, dynamics_params)) as f:
         dynamics_params = json.load(f)
@@ -50,6 +52,12 @@ def get_glif3_param_val_vars(cfg, dynamics_params):
         "ASC_2": dynamics_params["asc_init"][1] / 1000}  # pA -> nA
 
     return param_vals, var_vals
+
+def get_glif3_tau_syn(cfg, dynamics_params):
+    with open(os.path.join(cfg.point_neuron_models_dir, dynamics_params)) as f:
+        dynamics_params = json.load(f)
+    
+    return dynamics_params["tau_syn"]
 
 node_id_lookup_dtype = np.dtype([("id", np.uint32), ("index", np.uint32)])
 
@@ -104,7 +112,7 @@ for nodes, node_types in node_files:
         for i, (nodes, g) in enumerate(pop_node_dict[name]):
             node_id_lookup[name]["id"][nodes] = i
             node_id_lookup[name]["index"][nodes] = nodes - nodes[0]
-"""
+
 # Loop through edge files
 print("Edges")
 pop_edge_dict = {}
@@ -146,19 +154,20 @@ for edges, edge_types in edge_files:
             pop_group_df = pop_group_df.join(edge_types, on="edge_type_id")
             
             # Group by delay and; source and target population id
-            pop_edge_dict[name] = [grp + (df["source_pop_index"].to_numpy(), df["target_pop_index"].to_numpy())
+            pop_edge_dict[name] = [grp + (df["source_pop_index"].to_numpy(), df["target_pop_index"].to_numpy(), df["syn_weight"].to_numpy())
                                    for grp, df in pop_group_df.groupby(["delay", "dynamics_params", 
                                                                         "source_pop_id", "target_pop_id"])]
 
             print(f"\t\t\t{len(pop_group_df)} edges in {len(pop_edge_dict[name])} homogeneous populations")
         print(f"\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
-"""
 
 # Create model and set timestamp
 model = GeNNModel()
 model.dT = cfg.dt
 
-# Loop through populations
+# Loop through node populations
+print("Building GeNN neuron populations")
+genn_neuron_pop_dict = defaultdict(list)
 for pop_name, pops in pop_node_dict.items():
     # Loop through homogeneous GeNN populations within this
     for pop_id, (pop_nodes, pop_grouping) in enumerate(pops):
@@ -170,12 +179,30 @@ for pop_name, pops in pop_node_dict.items():
         if len(pop_grouping) == 2:
             print("\tPoint process")
             
-            # Get GeNN 
+            # Convert dynamics_params to GeNN parameter and variable values
             param_vals, var_vals = get_glif3_param_val_vars(cfg, pop_grouping[1])
             
-            
+            # Add population
             genn_pop = model.add_neuron_population(
                 genn_pop_name, len(pop_nodes), genn_models.glif3,
                 param_vals, var_vals)
         else:
             print("\tVirtual")
+            # **TEMP**
+            genn_pop = model.add_neuron_population(
+                genn_pop_name, len(pop_nodes), "SpikeSource",
+                {}, {})
+        
+        # Add to dictionary
+        # **NOTE** indexing will be the same as pop_node_dict
+        genn_neuron_pop_dict[pop_name].append(genn_pop)
+
+# Loop through edge populations
+print("Building GeNN synapse populations")
+genn_synapse_pop_dict = defaultdict(list)
+for pop_name, pops in pop_edge_dict.items():
+    # Loop through homogeneous GeNN populations within this
+    for (delay, dynamics_params, source_pop_id, target_pop_id,
+            source_pop_index, target_pop_index, syn_weight) in pops:
+        print(delay, len(syn_weight))
+        
