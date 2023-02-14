@@ -1,4 +1,5 @@
 import json
+import os
 import numpy as np
 import pandas as pd
 import genn_models
@@ -12,8 +13,11 @@ from collections import defaultdict, namedtuple
 from os import chdir
 from time import perf_counter
 
-def get_glif3_param_val_vars(dynamics_params):
-    pass
+def get_glif3_param_val_vars(components_dir, dynamics_params):
+    with open(os.path.join(components_dir, dynamics_params)) as f:
+        dynamics_params = json.load(f)
+    print(dynamics_params)
+    return {}, {}
 
 node_id_lookup_dtype = np.dtype([("id", np.uint32), ("index", np.uint32)])
 
@@ -67,7 +71,7 @@ for nodes, node_types in node_files:
         for i, (nodes, g) in enumerate(pop_node_dict[name]):
             node_id_lookup[name]["id"][nodes] = i
             node_id_lookup[name]["index"][nodes] = nodes - nodes[0]
-
+"""
 # Loop through edge files
 print("Edges")
 pop_edge_dict = {}
@@ -115,7 +119,7 @@ for edges, edge_types in edge_files:
 
             print(f"\t\t\t{len(pop_group_df)} edges in {len(pop_edge_dict[name])} homogeneous populations")
         print(f"\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
-
+"""
 
 # Create model and set timestamp
 model = GeNNModel()
@@ -123,12 +127,15 @@ model.dT = cfg.dt
 
 # Loop through populations
 for pop_name, pops in pop_node_dict.items():
-    # Loop through nodes and grouping of GeNN populations within this
+    # Loop through homogeneous GeNN populations within this
     for pop_nodes, pop_grouping in pops:
         assert len(pop_grouping) > 0
-        
         print(f"{pop_name}_{pop_grouping[0]}")
+        
+        # If population has dynamics
         if len(pop_grouping) == 2:
             print("\tPoint process")
+            param_vals, var_vals = get_glif3_param_val_vars(
+                cfg.point_neuron_models_dir, pop_grouping[1])
         else:
             print("\tVirtual")
