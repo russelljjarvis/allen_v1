@@ -114,5 +114,5 @@ for edges, edge_types in edge_files:
                                    for grp, df in pop_group_df.groupby(["delay", "dynamics_params", 
                                                                         "source_pop_id", "target_pop_id"])]
 
-            print(f"\t\t\tlen(pop_group_df) edges in {len(pop_edge_dict[name])} homogeneous populations")
+            print(f"\t\t\t{len(pop_group_df)} edges in {len(pop_edge_dict[name])} homogeneous populations")
         print(f"\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
