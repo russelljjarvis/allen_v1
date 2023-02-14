@@ -32,14 +32,12 @@ model.dT = cfg.dt
 node_files = [(File(n["nodes_file"], "r"), 
                pd.read_csv(n["node_types_file"], index_col="node_type_id", 
                            usecols=lambda n: n in ["node_type_id", "dynamics_params", "location"],
-                           dtype={"node_type_id": np.uint32, "dynamics_params": object},
                            delimiter=" ", skipinitialspace=True))
               for n in cfg.networks["nodes"]]
 
 edge_files = [(File(n["edges_file"], "r"),
                pd.read_csv(n["edge_types_file"], index_col="edge_type_id", 
                            usecols=lambda n: n in ["edge_type_id", "delay", "dynamics_params"],
-                           dtype={"edge_type_id": np.uint32, "delay": np.float32, "dynamics_params": object},
                            delimiter=" ", skipinitialspace=True))
               for n in cfg.networks["edges"]]
 
@@ -100,15 +98,15 @@ for edges, edge_types in edge_files:
         target_nodes = node_id_lookup[target_node_pop][:][pop["target_node_id"][()]]
         
         # Build dataframe from required edge data
-        pop_df = pd.DataFrame(data={"edge_group_id": pd.Series(pop["edge_group_id"], dtype=np.uint32),
-                                    "edge_group_index": pd.Series(pop["edge_group_index"], dtype=np.uint32), 
-                                    "edge_type_id": pd.Series(pop["edge_type_id"], dtype=np.uint32),
-                                    "source_pop_index": pd.Series(source_nodes["pop_index"], dtype=np.uint32),
+        pop_df = pd.DataFrame(data={"edge_group_id": pop["edge_group_id"],
+                                    "edge_group_index": pop["edge_group_index"],
+                                    "edge_type_id": pop["edge_type_id"],
+                                    "source_pop_index": source_nodes["pop_index"],
                                     "source_location": source_nodes["location"],
                                     "source_dynamics_params": source_nodes["dynamics_params"],
-                                    "target_pop_index": pd.Series(target_nodes["pop_index"], dtype=np.uint32),
+                                    "target_pop_index": target_nodes["pop_index"],
                                     "target_location": target_nodes["location"],
-                                    "target_dynamics_params": target_nodes["dynamics_params"],})
+                                    "target_dynamics_params": target_nodes["dynamics_params"]})
 
         # Group by group ID
         for group_id, pop_group_df in pop_df.groupby("edge_group_id"):
@@ -116,7 +114,7 @@ for edges, edge_types in edge_files:
 
             # Build dataframe from required group data
             group = pop[str(group_id)]
-            group_df = pd.DataFrame(data={"syn_weight": pd.Series(group["syn_weight"], dtype=np.float32)})
+            group_df = pd.DataFrame(data={"syn_weight": group["syn_weight"]})
 
             # Join with pop_df
             # **THINK** is this right sort of join
