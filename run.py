@@ -5,7 +5,6 @@ import pandas as pd
 import genn_models
 
 from h5py import File
-#from sonata.circuit import File
 from sonata.config import SonataConfig
 from pygenn.genn_model import GeNNModel
 
@@ -87,7 +86,7 @@ edge_files = [(File(n["edges_file"], "r"),
               for n in cfg.networks["edges"]]
 
 # Loop through node files
-print("Parsing SONATA model description")
+print("Reading SONATA model description")
 print("\tNodes")
 pop_node_dict = {}
 node_id_lookup = {}
@@ -182,7 +181,6 @@ for pop_name, pops in pop_node_dict.items():
     for pop_id, (pop_nodes, pop_grouping) in enumerate(pops):
         assert len(pop_grouping) > 0
         genn_pop_name = f"{pop_name}_{pop_grouping[0]}_{pop_id}"
-        print(genn_pop_name)
 
         # If population has dynamics
         if len(pop_grouping) == 2:
@@ -209,16 +207,35 @@ genn_synapse_pop_dict = defaultdict(list)
 for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
     # Loop through homogeneous GeNN populations within this
     # **TODO** namedtuple
-    for (delay, dynamics_params, source_pop_id, target_pop_id,
-            source_pop_index, target_pop_index, syn_weight) in pops:
-        # Get dynamics params used by target population
-        target_dynamics_params = pop_node_dict[target_node_pop][target_pop_id][1][1]
-
-        # From these, read tau_syn for this synapse group
-        tau_syn = get_glif3_tau_syn(cfg, target_dynamics_params)
+    for pop_id, (delay, dynamics_params, source_pop_id, target_pop_id,
+                 source_pop_index, target_pop_index, syn_weight) in enumerate(pops):
+        genn_pop_name = f"{pop_name}_{pop_id}"
 
         # Read receptor index from dynamics params
         receptor_index = get_static_synapse_receptor_index(cfg, dynamics_params)
 
-        print(f"\t\t{tau_syn}, {receptor_index}")
+        # Get dynamics params used by target population
+        target_dynamics_params = pop_node_dict[target_node_pop][target_pop_id][1][1]
 
+        # From these, read tau_syn for this synapse group
+        tau_syn = get_glif3_tau_syn(cfg, target_dynamics_params)[receptor_index]
+
+        # Round delay
+        delay = int(round(delay / cfg.dt))
+        
+        # Convert weight from nS to uS
+        syn_weight = syn_weight / 1000.0
+        
+        # Add population to model
+        pop = model.add_synapse_population(
+            genn_pop_name, "SPARSE_INDIVIDUALG", delay,
+            genn_neuron_pop_dict[source_node_pop][source_pop_id],
+            genn_neuron_pop_dict[target_node_pop][target_pop_id],
+            "StaticPulse", {}, {"g": syn_weight}, {}, {},
+            genn_models.psc_alpha, {"tau": tau_syn}, {"x": 0.0})
+
+        # Set sparse connectivity
+        pop.set_sparse_connections(source_pop_index, target_pop_index)
+
+# Build model
+model.build()
