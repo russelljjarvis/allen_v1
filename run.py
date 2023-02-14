@@ -13,10 +13,7 @@ import pandas as pd
 import pygenn
 
 
-node_to_pop_id_dtype = np.dtype([("location", object), ("dynamics_params", object), 
-                                 ("pop_index", np.uint32)])
-
-edge_type_dtype = np.dtype([("delay", float), ("dynamics_params", object)])
+node_id_lookup_dtype = np.dtype([("id", np.uint32), ("index", np.uint32)])
 
 # Open top-level Sonata configu
 chdir("v1_point")
@@ -26,12 +23,10 @@ cfg = SonataConfig.from_json("config.json")
 model = pygenn.genn_model.GeNNModel()
 model.dT = cfg.dt
 
-# Open files, specified by config
-# **NOTE** IDs overlap
-# **TODO** reduce width of datatypes
+# Open HDF5 and CSV files, specified by config
 node_files = [(File(n["nodes_file"], "r"), 
                pd.read_csv(n["node_types_file"], index_col="node_type_id", 
-                           usecols=lambda n: n in ["node_type_id", "dynamics_params", "location"],
+                           usecols=lambda n: n in ["node_type_id", "dynamics_params", "pop_name"],
                            delimiter=" ", skipinitialspace=True))
               for n in cfg.networks["nodes"]]
 
@@ -50,36 +45,29 @@ for nodes, node_types in node_files:
     # **NOTE** these aren't populations in the GeNN/PyNN sense
     for name, pop in nodes["nodes"].items():
         print(f"\t{name}")
-        
-        # If node has dynamics ie is 'real' neuron
-        # **TODO** something model_type based
-        if "dynamics_params" in node_types:
-            # Build dataframe from required node data
-            pop_df = pd.DataFrame(data={"node_type_id": pop["node_type_id"]},
-                                  index=pop["node_id"])
-            pop_df = pop_df.join(node_types, on="node_type_id")
-            
-            
-            # Group nodes by location and dynamic parameter types and build dictionary
-            # of (location, dynamic params) tuples to numpy array of node IDs
-            start_time = perf_counter()
-            pop_node_dict[name] = [(l, d, df.index.to_numpy())
-                                   for (l, d), df in pop_df.groupby(["location", "dynamics_params"])]
-            print(f"\t\t{len(pop_node_dict[name])} homogeneous populations")
-            print(f"\t\tBuilt dictionary in {perf_counter() - start_time} seconds")
+        # Build dataframe from required node data
+        pop_df = pd.DataFrame(data={"node_type_id": pop["node_type_id"]},
+                              index=pop["node_id"])
+        pop_df = pop_df.join(node_types, on="node_type_id")
 
-            # Create empty array to map node IDs to populations and IDs within them
-            start_time = perf_counter()
-            node_id_lookup[name] = np.empty(len(pop_df), dtype=node_to_pop_id_dtype)
+        # Group by population name and dynamic params if population has 
+        # dynamics params i.e. if nodes aren't virtual, otherwise just by population name
+        group_cols = (["pop_name", "dynamics_params"] if "dynamics_params" in node_types
+                      else ["pop_name"])
+    
+        # Add list of tuples containing node ids and grouping terms to dictionary
+        pop_node_dict[name] = [(df.index.to_numpy(), g)
+                               for g, df in pop_df.groupby(group_cols)]
+        print(f"\t\t{len(pop_node_dict[name])} homogeneous populations")
 
-            # Loop through newly-identified homogeneous populations and 
-            # **TODO** abstract away unique variables into index so this works with virtual nodes
-            for l, d, nodes in pop_node_dict[name]:
-                node_id_lookup[name]["location"][nodes] = l
-                node_id_lookup[name]["dynamics_params"][nodes] = d
-                node_id_lookup[name]["pop_index"][nodes] = nodes - nodes[0]
+        # Create empty array to map node IDs to populations and indices within them
+        start_time = perf_counter()
+        node_id_lookup[name] = np.empty(len(pop_df), dtype=node_id_lookup_dtype)
 
-            print(f"\t\tBuilt ID lookup in {perf_counter() - start_time} seconds")
+        # Loop through newly-identified homogeneous populations and build lookup table
+        for i, (nodes, g) in enumerate(pop_node_dict[name]):
+            node_id_lookup[name]["id"][nodes] = i
+            node_id_lookup[name]["index"][nodes] = nodes - nodes[0]
 
 # Loop through edge files
 print("Edges")
@@ -101,12 +89,10 @@ for edges, edge_types in edge_files:
         pop_df = pd.DataFrame(data={"edge_group_id": pop["edge_group_id"],
                                     "edge_group_index": pop["edge_group_index"],
                                     "edge_type_id": pop["edge_type_id"],
-                                    "source_pop_index": source_nodes["pop_index"],
-                                    "source_location": source_nodes["location"],
-                                    "source_dynamics_params": source_nodes["dynamics_params"],
-                                    "target_pop_index": target_nodes["pop_index"],
-                                    "target_location": target_nodes["location"],
-                                    "target_dynamics_params": target_nodes["dynamics_params"]})
+                                    "source_pop_index": source_nodes["index"],
+                                    "source_pop_id": source_nodes["id"],
+                                    "target_pop_index": target_nodes["index"],
+                                    "target_pop_id": target_nodes["id"]})
 
         # Group by group ID
         for group_id, pop_group_df in pop_df.groupby("edge_group_id"):
@@ -123,10 +109,10 @@ for edges, edge_types in edge_files:
             # Join with edge types
             pop_group_df = pop_group_df.join(edge_types, on="edge_type_id")
             
+            # Group by delay and; source and target population id
             pop_edge_dict[name] = [grp + (df["source_pop_index"].to_numpy(), df["target_pop_index"].to_numpy())
                                    for grp, df in pop_group_df.groupby(["delay", "dynamics_params", 
-                                                                        "source_location", "source_dynamics_params",
-                                                                        "target_location", "target_dynamics_params"])]
+                                                                        "source_pop_id", "target_pop_id"])]
 
             print(f"\t\t\tlen(pop_group_df) edges in {len(pop_edge_dict[name])} homogeneous populations")
         print(f"\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
