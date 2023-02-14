@@ -17,7 +17,7 @@ from time import perf_counter
 def get_glif3_param_val_vars(cfg, dynamics_params):
     with open(os.path.join(cfg.point_neuron_models_dir, dynamics_params)) as f:
         dynamics_params = json.load(f)
-    
+
     assert len(dynamics_params["asc_init"]) == 2
     assert len(dynamics_params["asc_amps"]) == 2
     assert len(dynamics_params["asc_decay"]) == 2
@@ -27,7 +27,7 @@ def get_glif3_param_val_vars(cfg, dynamics_params):
     asc_decay_rates = np.exp(-asc_decay * cfg.dt)
     asc_stable_coeff = (1.0 / asc_decay / cfg.dt) * (1.0 - asc_decay_rates)
     asc_refractory_decay_rates = r * np.exp(-asc_decay * dynamics_params["t_ref"])
-    
+
     param_vals = {
         "C": dynamics_params["C_m"] / 1000,  # pF -> nF
         "G": dynamics_params["g"] / 1000,  # nS -> uS
@@ -43,7 +43,7 @@ def get_glif3_param_val_vars(cfg, dynamics_params):
         "asc_decay_rates_2": asc_decay_rates[1],
         "asc_refractory_decay_rates_1": asc_refractory_decay_rates[0],
         "asc_refractory_decay_rates_2": asc_refractory_decay_rates[1]}
-    
+
     var_vals = {
         "V": dynamics_params["V_m"],
         "refractory_countdown": -1,
@@ -56,14 +56,14 @@ def get_glif3_param_val_vars(cfg, dynamics_params):
 def get_glif3_tau_syn(cfg, dynamics_params):
     with open(os.path.join(cfg.point_neuron_models_dir, dynamics_params)) as f:
         dynamics_params = json.load(f)
-    
+
     return dynamics_params["tau_syn"]
 
 # Read the receptor index from a static synapse model dynamics params file
 def get_static_synapse_receptor_index(cfg, dynamics_params):
     with open(os.path.join(cfg.synaptic_models_dir, dynamics_params)) as f:
         dynamics_params = json.load(f)
-    
+
     return dynamics_params["receptor_type"]
 
 node_id_lookup_dtype = np.dtype([("id", np.uint32), ("index", np.uint32)])
@@ -156,12 +156,12 @@ for edges, edge_types in edge_files:
             # Join with pop_df
             # **THINK** is this right sort of join
             pop_group_df = pop_group_df.join(group_df, on="edge_group_index")
-            
+
             # Join with edge types
             pop_group_df = pop_group_df.join(edge_types, on="edge_type_id")
-            
+
             # Group by delay and; source and target population id
-            pop_edge_dict[(name, source_node_pop, target_node_pop)] =\ 
+            pop_edge_dict[(name, source_node_pop, target_node_pop)] =\
                 [grp + (df["source_pop_index"].to_numpy(), df["target_pop_index"].to_numpy(), df["syn_weight"].to_numpy())
                  for grp, df in pop_group_df.groupby(["delay", "dynamics_params", 
                                                       "source_pop_id", "target_pop_id"])]
@@ -182,7 +182,7 @@ for pop_name, pops in pop_node_dict.items():
         assert len(pop_grouping) > 0
         genn_pop_name = f"{pop_name}_{pop_grouping[0]}_{pop_id}"
         print(genn_pop_name)
-        
+
         # If population has dynamics
         if len(pop_grouping) == 2:
             print("\tPoint process")
