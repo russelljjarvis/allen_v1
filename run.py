@@ -212,14 +212,13 @@ for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
     for (delay, dynamics_params, source_pop_id, target_pop_id,
             source_pop_index, target_pop_index, syn_weight) in pops:
         # Get dynamics params used by target population
-        target_dynamics_params = pop_node_dict[target_node_pop][target_pop_index][1][1]
-        
+        target_dynamics_params = pop_node_dict[target_node_pop][target_pop_id][1][1]
+
         # From these, read tau_syn for this synapse group
         tau_syn = get_glif3_tau_syn(cfg, target_dynamics_params)
-        
+
         # Read receptor index from dynamics params
         receptor_index = get_static_synapse_receptor_index(cfg, dynamics_params)
-        
-        
+
         print(f"\t\t{tau_syn}, {receptor_index}")
-        
+
