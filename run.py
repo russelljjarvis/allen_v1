@@ -87,14 +87,15 @@ edge_files = [(File(n["edges_file"], "r"),
               for n in cfg.networks["edges"]]
 
 # Loop through node files
-print("Nodes")
+print("Parsing SONATA model description")
+print("\tNodes")
 pop_node_dict = {}
 node_id_lookup = {}
 for nodes, node_types in node_files:
     # Loop through populations in each one
     # **NOTE** these aren't populations in the GeNN/PyNN sense
     for name, pop in nodes["nodes"].items():
-        print(f"\t{name}")
+        print(f"\t\t{name}")
         # Build dataframe from required node data
         # **TODO** check that all model_template are nest:glif_psc
         pop_df = pd.DataFrame(data={"node_type_id": pop["node_type_id"]},
@@ -109,7 +110,7 @@ for nodes, node_types in node_files:
         # Add list of tuples containing node ids and grouping terms to dictionary
         pop_node_dict[name] = [(df.index.to_numpy(), g)
                                for g, df in pop_df.groupby(group_cols)]
-        print(f"\t\t{len(pop_node_dict[name])} homogeneous populations")
+        print(f"\t\t\t{len(pop_node_dict[name])} homogeneous populations")
 
         # Create empty array to map node IDs to populations and indices within them
         start_time = perf_counter()
@@ -121,7 +122,7 @@ for nodes, node_types in node_files:
             node_id_lookup[name]["index"][indices] = indices - indices[0]
 
 # Loop through edge files
-print("Edges")
+print("\tEdges")
 pop_edge_dict = {}
 for edges, edge_types in edge_files:
     # Loop through populations in each one
@@ -129,7 +130,7 @@ for edges, edge_types in edge_files:
     for name, pop in edges["edges"].items():
         source_node_pop = pop["source_node_id"].attrs["node_population"]
         target_node_pop = pop["target_node_id"].attrs["node_population"]
-        print(f"\t{name} ({source_node_pop}->{target_node_pop})")
+        print(f"\t\t{name} ({source_node_pop}->{target_node_pop})")
         start_time = perf_counter()
         
         # Lookup source and target nodes
@@ -147,7 +148,7 @@ for edges, edge_types in edge_files:
 
         # Group by group ID
         for group_id, pop_group_df in pop_df.groupby("edge_group_id"):
-            print(f"\t\tGroup {group_id}")
+            print(f"\t\t\tGroup {group_id}")
 
             # Build dataframe from required group data
             group = pop[str(group_id)]
@@ -161,20 +162,20 @@ for edges, edge_types in edge_files:
             pop_group_df = pop_group_df.join(edge_types, on="edge_type_id")
 
             # Group by delay and; source and target population id
-            pop_edge_dict[(name, source_node_pop, target_node_pop)] =\
-                [grp + (df["source_pop_index"].to_numpy(), df["target_pop_index"].to_numpy(), df["syn_weight"].to_numpy())
-                 for grp, df in pop_group_df.groupby(["delay", "dynamics_params", 
+            hom_pops = [grp + (df["source_pop_index"].to_numpy(), df["target_pop_index"].to_numpy(), df["syn_weight"].to_numpy())
+                        for grp, df in pop_group_df.groupby(["delay", "dynamics_params", 
                                                       "source_pop_id", "target_pop_id"])]
-
-            print(f"\t\t\t{len(pop_group_df)} edges in {len(pop_edge_dict[name])} homogeneous populations")
-        print(f"\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
+            pop_edge_dict[(name, source_node_pop, target_node_pop)] = hom_pops 
+            print(f"\t\t\t\t{len(pop_group_df)} edges in {len(hom_pops)} homogeneous populations")
+        print(f"\t\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
 
 # Create model and set timestamp
 model = GeNNModel()
 model.dT = cfg.dt
 
 # Loop through node populations
-print("Building GeNN neuron populations")
+print("Building GeNN model")
+print("\tBuilding GeNN neuron populations")
 genn_neuron_pop_dict = defaultdict(list)
 for pop_name, pops in pop_node_dict.items():
     # Loop through homogeneous GeNN populations within this
@@ -185,8 +186,6 @@ for pop_name, pops in pop_node_dict.items():
 
         # If population has dynamics
         if len(pop_grouping) == 2:
-            print("\tPoint process")
-            
             # Convert dynamics_params to GeNN parameter and variable values
             param_vals, var_vals = get_glif3_param_val_vars(cfg, pop_grouping[1])
             
@@ -195,7 +194,6 @@ for pop_name, pops in pop_node_dict.items():
                 genn_pop_name, len(pop_nodes), genn_models.glif3,
                 param_vals, var_vals)
         else:
-            print("\tVirtual")
             # **TEMP**
             genn_pop = model.add_neuron_population(
                 genn_pop_name, len(pop_nodes), "SpikeSource",
@@ -206,14 +204,22 @@ for pop_name, pops in pop_node_dict.items():
         genn_neuron_pop_dict[pop_name].append(genn_pop)
 
 # Loop through edge populations
-print("Building GeNN synapse populations")
+print("\tBuilding GeNN synapse populations")
 genn_synapse_pop_dict = defaultdict(list)
 for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
     # Loop through homogeneous GeNN populations within this
     # **TODO** namedtuple
     for (delay, dynamics_params, source_pop_id, target_pop_id,
             source_pop_index, target_pop_index, syn_weight) in pops:
-        target_dynamics_params = pop_node_dict[target_node_pop][1][1]
+        # Get dynamics params used by target population
+        target_dynamics_params = pop_node_dict[target_node_pop][target_pop_index][1][1]
+        
+        # From these, read tau_syn for this synapse group
         tau_syn = get_glif3_tau_syn(cfg, target_dynamics_params)
-        print(tau_syn)
+        
+        # Read receptor index from dynamics params
+        receptor_index = get_static_synapse_receptor_index(cfg, dynamics_params)
+        
+        
+        print(f"\t\t{tau_syn}, {receptor_index}")
         
