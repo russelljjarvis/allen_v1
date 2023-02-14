@@ -13,8 +13,6 @@ from collections import defaultdict, namedtuple
 from os import chdir
 from time import perf_counter
 
-def get_psc_alpha_param_val_vars(cfg, dynamic_params):
-    
 def get_glif3_param_val_vars(cfg, dynamics_params):
     with open(os.path.join(cfg.point_neuron_models_dir, dynamics_params)) as f:
         dynamics_params = json.load(f)
