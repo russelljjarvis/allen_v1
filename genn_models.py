@@ -1,6 +1,8 @@
 from pygenn.genn_model import (create_custom_neuron_class,
-                               
-glif3 = pygenn.genn_model.create_custom_neuron_class(
+                               create_custom_postsynaptic_class)
+
+
+glif3 = create_custom_neuron_class(
     "glif3",
     param_names=[
         "C",
@@ -52,7 +54,7 @@ glif3 = pygenn.genn_model.create_custom_neuron_class(
     $(refractory_countdown) = $(spike_cut_length);
     """)
 
-psc_alpha = pygenn.genn_model.create_custom_postsynaptic_class(
+psc_alpha = create_custom_postsynaptic_class(
     class_name="Alpha",
     decay_code="""
     $(x) = exp(-DT/$(tau)) * ((DT * $(inSyn) * exp(1.0f) / $(tau)) + $(x));
