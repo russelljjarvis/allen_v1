@@ -161,9 +161,9 @@ model.dT = cfg.dt
 # Loop through populations
 for pop_name, pops in pop_node_dict.items():
     # Loop through homogeneous GeNN populations within this
-    for pop_nodes, pop_grouping in pops:
+    for pop_id, (pop_nodes, pop_grouping) in enumerate(pops):
         assert len(pop_grouping) > 0
-        genn_pop_name = f"{pop_name}_{pop_grouping[0]}"
+        genn_pop_name = f"{pop_name}_{pop_grouping[0]}_{pop_id}"
         print(genn_pop_name)
         
         # If population has dynamics
