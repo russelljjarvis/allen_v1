@@ -12,7 +12,7 @@ from collections import defaultdict, namedtuple
 from os import chdir
 from time import perf_counter
 
-# Read the GeNN neuron parameter and variable values from a GLIF3 model dynamics params file
+# Get GeNN neuron parameter and variable values from a GLIF3 model dynamics params file
 def get_glif3_param_val_vars(cfg, dynamics_params):
     with open(os.path.join(cfg.point_neuron_models_dir, dynamics_params)) as f:
         dynamics_params = json.load(f)
@@ -51,14 +51,14 @@ def get_glif3_param_val_vars(cfg, dynamics_params):
 
     return param_vals, var_vals
 
-# Read the tau_syn array from a GLIF3 model dynamics params file
+# Get tau_syn array from a GLIF3 model dynamics params file
 def get_glif3_tau_syn(cfg, dynamics_params):
     with open(os.path.join(cfg.point_neuron_models_dir, dynamics_params)) as f:
         dynamics_params = json.load(f)
 
     return dynamics_params["tau_syn"]
 
-# Read the receptor index from a static synapse model dynamics params file
+# Get receptor index from a static synapse model dynamics params file
 def get_static_synapse_receptor_index(cfg, dynamics_params):
     with open(os.path.join(cfg.synaptic_models_dir, dynamics_params)) as f:
         dynamics_params = json.load(f)
@@ -73,6 +73,8 @@ cfg = SonataConfig.from_json("config.json")
 
 
 # Open HDF5 and CSV files, specified by config
+# **NOTE** because we join these later we only read columns we use
+# **NOTE** lambda lets you read csvs with optional columns in usecols
 node_files = [(File(n["nodes_file"], "r"), 
                pd.read_csv(n["node_types_file"], index_col="node_type_id", 
                            usecols=lambda n: n in ["node_type_id", "dynamics_params", "pop_name"],
@@ -109,7 +111,7 @@ for nodes, node_types in node_files:
         # Add list of tuples containing node ids and grouping terms to dictionary
         pop_node_dict[name] = [(df.index.to_numpy(), g)
                                for g, df in pop_df.groupby(group_cols)]
-        print(f"\t\t\t{len(pop_node_dict[name])} homogeneous populations")
+        print(f"\t\t\t{len(pop_df)} neurons in {len(pop_node_dict[name])} homogeneous populations")
 
         # Create empty array to map node IDs to populations and indices within them
         start_time = perf_counter()
@@ -118,7 +120,7 @@ for nodes, node_types in node_files:
         # Loop through newly-identified homogeneous populations and build lookup table
         for i, (indices, g) in enumerate(pop_node_dict[name]):
             node_id_lookup[name]["id"][indices] = i
-            node_id_lookup[name]["index"][indices] = indices - indices[0]
+            node_id_lookup[name]["index"][indices] = np.arange(len(indices))
 
 # Loop through edge files
 print("\tEdges")
@@ -163,7 +165,7 @@ for edges, edge_types in edge_files:
             # Group by delay and; source and target population id
             hom_pops = [grp + (df["source_pop_index"].to_numpy(), df["target_pop_index"].to_numpy(), df["syn_weight"].to_numpy())
                         for grp, df in pop_group_df.groupby(["delay", "dynamics_params", 
-                                                      "source_pop_id", "target_pop_id"])]
+                                                             "source_pop_id", "target_pop_id"])]
             pop_edge_dict[(name, source_node_pop, target_node_pop)] = hom_pops 
             print(f"\t\t\t\t{len(pop_group_df)} edges in {len(hom_pops)} homogeneous populations")
         print(f"\t\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
@@ -171,6 +173,8 @@ for edges, edge_types in edge_files:
 # Create model and set timestamp
 model = GeNNModel()
 model.dT = cfg.dt
+model.fuse_postsynaptic_models = True
+model.default_narrow_sparse_ind_enabled = True
 
 # Loop through node populations
 print("Building GeNN model")
