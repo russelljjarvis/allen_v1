@@ -242,4 +242,5 @@ for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
         pop.set_sparse_connections(source_pop_index, target_pop_index)
 
 # Build model
-model.build()
+mem_usage = model.build()
+print(f"Model requires {mem_usage.get_device_mbytes()}MB device memory and {mem_usage.get_host_mbytes()}MB host memory")
