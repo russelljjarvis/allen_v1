@@ -52,7 +52,8 @@ glif3 = create_custom_neuron_class(
     $(ASC_1) = $(asc_amp_array_1) + $(ASC_1) * $(asc_refractory_decay_rates_1);
     $(ASC_2) = $(asc_amp_array_2) + $(ASC_2) * $(asc_refractory_decay_rates_2);
     $(refractory_countdown) = $(spike_cut_length);
-    """)
+    """,
+    is_auto_refractory_required=False)
 
 psc_alpha = create_custom_postsynaptic_class(
     class_name="Alpha",
@@ -64,4 +65,5 @@ psc_alpha = create_custom_postsynaptic_class(
     $(Isyn) += $(x);     
     """,
     var_name_types=[("x", "scalar")],
-    param_names=[("tau")])
+    param_names=[("tau")],
+    is_safe_to_fuse=True)
