@@ -90,6 +90,7 @@ edge_files = [(File(n["edges_file"], "r"),
 # Loop through node files
 print("Reading SONATA model description")
 print("\tNodes")
+node_read_start_time = perf_counter()
 pop_node_dict = {}
 node_id_lookup = {}
 for nodes, node_types in node_files:
@@ -122,6 +123,9 @@ for nodes, node_types in node_files:
             node_id_lookup[name]["id"][indices] = i
             node_id_lookup[name]["index"][indices] = np.arange(len(indices))
 
+input_read_start_time = perf_counter()
+print(f"\t\t{input_read_start_time - node_read_start_time} seconds")
+
 # Loop through inputs provided by config
 print("\tInputs")
 input_dict = {}
@@ -137,6 +141,9 @@ for name, input in cfg.inputs.items():
     # Open spike file
     input_dict[input["node_set"]] = File(input["input_file"], "r")
 
+edge_read_start_time = perf_counter()
+print(f"\t\t{edge_read_start_time - input_read_start_time} seconds")
+
 # Loop through edge files
 print("\tEdges")
 pop_edge_dict = {}
@@ -147,7 +154,6 @@ for edges, edge_types in edge_files:
         source_node_pop = pop["source_node_id"].attrs["node_population"]
         target_node_pop = pop["target_node_id"].attrs["node_population"]
         print(f"\t\t{name} ({source_node_pop}->{target_node_pop})")
-        start_time = perf_counter()
 
         # Lookup source and target nodes
         source_nodes = node_id_lookup[source_node_pop][:][pop["source_node_id"][()]]
@@ -183,7 +189,9 @@ for edges, edge_types in edge_files:
                                                              "source_pop_id", "target_pop_id"])]
             pop_edge_dict[(name, source_node_pop, target_node_pop)] = hom_pops 
             print(f"\t\t\t\t{len(pop_group_df)} edges in {len(hom_pops)} homogeneous populations")
-        print(f"\t\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
+
+neuron_create_start_time = perf_counter()
+print(f"\t\t{neuron_create_start_time - edge_read_start_time} seconds")
 
 # Create model and set timestamp
 model = GeNNModel("float", "v1_point", generateSimpleErrorHandling=True)
@@ -257,6 +265,9 @@ for pop_name, pops in pop_node_dict.items():
         # **NOTE** indexing will be the same as pop_node_dict
         genn_neuron_pop_dict[pop_name].append(genn_pop)
 
+synapse_create_start_time = perf_counter()
+print(f"\t\t{synapse_create_start_time - neuron_create_start_time} seconds")
+
 # Loop through edge populations
 print("\tCreating GeNN synapse populations")
 genn_synapse_pop_dict = defaultdict(list)
@@ -293,7 +304,20 @@ for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
         # Set sparse connectivity
         pop.set_sparse_connections(source_pop_index, target_pop_index)
 
+build_start_time = perf_counter()
+print(f"\t\t{build_start_time - synapse_create_start_time} seconds")
+
 # Build model
 print("Building GeNN model")
 mem_usage = model.build()
 print(f"\tModel requires {mem_usage.get_device_mbytes()}MB device memory and {mem_usage.get_host_mbytes()}MB host memory")
+
+load_start_time = perf_counter()
+print(f"\t{load_start_time - build_start_time} seconds")
+
+# Load model
+print("Loading GeNN model")
+model.load()
+
+run_start_time = perf_counter()
+print(f"\t{run_start_time - load_start_time} seconds")
