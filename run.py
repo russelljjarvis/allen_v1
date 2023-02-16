@@ -93,6 +93,7 @@ print("\tNodes")
 node_read_start_time = perf_counter()
 pop_node_dict = {}
 node_id_lookup = {}
+pop_id_lookup = defaultdict(list)
 for nodes, node_types in node_files:
     # Loop through populations in each one
     # **NOTE** these aren't populations in the GeNN/PyNN sense
@@ -118,10 +119,14 @@ for nodes, node_types in node_files:
         start_time = perf_counter()
         node_id_lookup[name] = np.empty(len(pop_df), dtype=node_id_lookup_dtype)
 
-        # Loop through newly-identified homogeneous populations and build lookup table
+        # Loop through newly-identified homogeneous populations
         for i, (indices, g) in enumerate(pop_node_dict[name]):
+            # Build lookup from node indices to homogeneous population id and indices within that
             node_id_lookup[name]["id"][indices] = i
             node_id_lookup[name]["index"][indices] = np.arange(len(indices))
+
+            # Build second lookup from population indices to node indices
+            pop_id_lookup[name].append(indices)
 
 input_read_start_time = perf_counter()
 print(f"\t\t{input_read_start_time - node_read_start_time} seconds")
@@ -217,7 +222,6 @@ for pop_name, pops in pop_node_dict.items():
         input_spikes_df = pd.DataFrame(data={"timestamps": input_spikes["timestamps"],
                                              "pop_index": input_nodes["index"],
                                              "pop_id": input_nodes["id"]})
-
         # Build dictionary with input spikes grouped by population ID
         pop_input_spikes = {id: (df["timestamps"].to_numpy(), df["pop_index"].to_numpy())
                             for id, df in input_spikes_df.groupby("pop_id")}
@@ -232,7 +236,7 @@ for pop_name, pops in pop_node_dict.items():
         if len(pop_grouping) == 2:
             # Convert dynamics_params to GeNN parameter and variable values
             param_vals, var_vals = get_glif3_param_val_vars(cfg, pop_grouping[1])
-            
+
             # Add population
             genn_pop = model.add_neuron_population(
                 genn_pop_name, num_neurons, genn_models.glif3,
@@ -241,12 +245,12 @@ for pop_name, pops in pop_node_dict.items():
         else:
             # Check that input spikes were read for this population
             assert pop_id in pop_input_spikes
-            
+
             # Calculate number of spikes per-neuron and then cumulative index
             end_spikes = np.cumsum(np.bincount(pop_input_spikes[pop_id][1], 
                                    minlength=num_neurons))
             assert len(end_spikes) == num_neurons
-            
+
             # Build start spikes from end spikes
             start_spikes = np.empty_like(end_spikes)
             start_spikes[0] = 0
@@ -260,7 +264,8 @@ for pop_name, pops in pop_node_dict.items():
                 genn_pop_name, num_neurons, "SpikeSourceArray",
                 {}, {"startSpike": start_spikes, "endSpike": end_spikes})
             genn_pop.set_extra_global_param("spikeTimes",  spike_times)
-        
+            genn_pop.spike_recording_enabled = True
+
         # Add to dictionary
         # **NOTE** indexing will be the same as pop_node_dict
         genn_neuron_pop_dict[pop_name].append(genn_pop)
@@ -289,10 +294,10 @@ for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
 
         # Round delay
         delay = int(round(delay / cfg.dt))
-        
+
         # Convert weight from nS to uS
         syn_weight = syn_weight / 1000.0
-        
+
         # Add population to model
         pop = model.add_synapse_population(
             genn_pop_name, "SPARSE_INDIVIDUALG", delay,
@@ -317,7 +322,41 @@ print(f"\t{load_start_time - build_start_time} seconds")
 
 # Load model
 print("Loading GeNN model")
-model.load()
+duration_ms = cfg.run["duration"]
+model.load(num_recording_timesteps=int(round(duration_ms / cfg.dt)))
 
 run_start_time = perf_counter()
 print(f"\t{run_start_time - load_start_time} seconds")
+
+# Simulate model
+print(f"Simulating GeNN model for {duration_ms}ms")
+while model.t < duration_ms:
+     model.step_time()
+
+model.pull_recording_buffers_from_device()
+
+run_stop_time = perf_counter()
+print(f"\t{run_stop_time - run_start_time} seconds")
+
+# Loop through population
+output_spike_timestamps = []
+output_spike_node_ids = []
+output_spike_pop_names = []
+for pop_name, genn_pops in genn_neuron_pop_dict.items():
+    # Loop through homogeneous GeNN populations
+    for pop_id, genn_pop in enumerate(genn_pops):
+        # If spike recording is enabled
+        if genn_pop.spike_recording_enabled:
+            # Extract spike recording data from population
+            st, sid = genn_pop.spike_recording_data
+
+            # Add numpy arrays to lists
+            output_spike_timestamps.append(st)
+            output_spike_node_ids.append(pop_id_lookup[pop_name][pop_id][sid])
+            output_spike_pop_names.extend([pop_name] * len(st))
+
+# Assemble dataframe and write to CSV
+output_spike_df = pd.DataFrame(data={"timestamps": np.concatenate(output_spike_timestamps),
+                                     "population": output_spike_pop_names,
+                                     "node_ids": np.concatenate(output_spike_node_ids)})
+output_spike_df.to_csv("spikes.csv", sep=" ")
