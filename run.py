@@ -93,7 +93,6 @@ print("\tNodes")
 node_read_start_time = perf_counter()
 pop_node_dict = {}
 node_id_lookup = {}
-pop_id_lookup = defaultdict(list)
 for nodes, node_types in node_files:
     # Loop through populations in each one
     # **NOTE** these aren't populations in the GeNN/PyNN sense
@@ -119,14 +118,11 @@ for nodes, node_types in node_files:
         start_time = perf_counter()
         node_id_lookup[name] = np.empty(len(pop_df), dtype=node_id_lookup_dtype)
 
-        # Loop through newly-identified homogeneous populations
+        # Loop through newly-identified homogeneous populations and build
+        # lookup from node indices to homogeneous population id and indices within that
         for i, (indices, g) in enumerate(pop_node_dict[name]):
-            # Build lookup from node indices to homogeneous population id and indices within that
             node_id_lookup[name]["id"][indices] = i
             node_id_lookup[name]["index"][indices] = np.arange(len(indices))
-
-            # Build second lookup from population indices to node indices
-            pop_id_lookup[name].append(indices)
 
 input_read_start_time = perf_counter()
 print(f"\t\t{input_read_start_time - node_read_start_time} seconds")
@@ -298,6 +294,8 @@ for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
         # Convert weight from nS to uS
         syn_weight = syn_weight / 1000.0
 
+        # **TODO** if all weights are the same, use SPARSE_GLOBALG
+
         # Add population to model
         pop = model.add_synapse_population(
             genn_pop_name, "SPARSE_INDIVIDUALG", delay,
@@ -352,7 +350,7 @@ for pop_name, genn_pops in genn_neuron_pop_dict.items():
 
             # Add numpy arrays to lists
             output_spike_timestamps.append(st)
-            output_spike_node_ids.append(pop_id_lookup[pop_name][pop_id][sid])
+            output_spike_node_ids.append(pop_node_dict[pop_name][pop_id][0][sid])
             output_spike_pop_names.extend([pop_name] * len(st))
 
 # Assemble dataframe and write to CSV
