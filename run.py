@@ -122,6 +122,11 @@ for nodes, node_types in node_files:
             node_id_lookup[name]["id"][indices] = i
             node_id_lookup[name]["index"][indices] = np.arange(len(indices))
 
+# Loop through inputs provided by config
+print("\Inputs")
+for input in cfg.inputs:
+    print(input)
+
 # Loop through edge files
 print("\tEdges")
 pop_edge_dict = {}
