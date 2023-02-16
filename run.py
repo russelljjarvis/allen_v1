@@ -177,8 +177,8 @@ model.fuse_postsynaptic_models = True
 model.default_narrow_sparse_ind_enabled = True
 
 # Loop through node populations
-print("Building GeNN model")
-print("\tBuilding GeNN neuron populations")
+print("Creating GeNN model")
+print("\tCreating GeNN neuron populations")
 genn_neuron_pop_dict = defaultdict(list)
 for pop_name, pops in pop_node_dict.items():
     # Loop through homogeneous GeNN populations within this
@@ -206,7 +206,7 @@ for pop_name, pops in pop_node_dict.items():
         genn_neuron_pop_dict[pop_name].append(genn_pop)
 
 # Loop through edge populations
-print("\tBuilding GeNN synapse populations")
+print("\tCreating GeNN synapse populations")
 genn_synapse_pop_dict = defaultdict(list)
 for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
     # Loop through homogeneous GeNN populations within this
@@ -222,7 +222,7 @@ for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
         target_dynamics_params = pop_node_dict[target_node_pop][target_pop_id][1][1]
 
         # From these, read tau_syn for this synapse group
-        tau_syn = get_glif3_tau_syn(cfg, target_dynamics_params)[receptor_index]
+        tau_syn = get_glif3_tau_syn(cfg, target_dynamics_params)
 
         # Round delay
         delay = int(round(delay / cfg.dt))
@@ -236,11 +236,12 @@ for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
             genn_neuron_pop_dict[source_node_pop][source_pop_id],
             genn_neuron_pop_dict[target_node_pop][target_pop_id],
             "StaticPulse", {}, {"g": syn_weight}, {}, {},
-            genn_models.psc_alpha, {"tau": tau_syn}, {"x": 0.0})
+            genn_models.psc_alpha, {"tau": tau_syn[receptor_index - 1]}, {"x": 0.0})
 
         # Set sparse connectivity
         pop.set_sparse_connections(source_pop_index, target_pop_index)
 
 # Build model
+print("Building GeNN model")
 mem_usage = model.build()
-print(f"Model requires {mem_usage.get_device_mbytes()}MB device memory and {mem_usage.get_host_mbytes()}MB host memory")
+print(f"\tModel requires {mem_usage.get_device_mbytes()}MB device memory and {mem_usage.get_host_mbytes()}MB host memory")
