@@ -237,6 +237,9 @@ for pop_name, pops in pop_node_dict.items():
             genn_pop = model.add_neuron_population(
                 genn_pop_name, num_neurons, genn_models.glif3,
                 param_vals, var_vals)
+
+            # Turn on spike recording
+            genn_pop.spike_recording_enabled = True
         # Otherwise
         else:
             # Check that input spikes were read for this population
@@ -260,7 +263,6 @@ for pop_name, pops in pop_node_dict.items():
                 genn_pop_name, num_neurons, "SpikeSourceArray",
                 {}, {"startSpike": start_spikes, "endSpike": end_spikes})
             genn_pop.set_extra_global_param("spikeTimes",  spike_times)
-            genn_pop.spike_recording_enabled = True
 
         # Add to dictionary
         # **NOTE** indexing will be the same as pop_node_dict
@@ -333,10 +335,11 @@ while model.t < duration_ms:
 
 model.pull_recording_buffers_from_device()
 
-run_stop_time = perf_counter()
-print(f"\t{run_stop_time - run_start_time} seconds")
+record_start_time = perf_counter()
+print(f"\t{record_start_time - run_start_time} seconds")
 
 # Loop through population
+print("Saving spikes")
 output_spike_timestamps = []
 output_spike_node_ids = []
 output_spike_pop_names = []
@@ -358,3 +361,6 @@ output_spike_df = pd.DataFrame(data={"timestamps": np.concatenate(output_spike_t
                                      "population": output_spike_pop_names,
                                      "node_ids": np.concatenate(output_spike_node_ids)})
 output_spike_df.to_csv("spikes.csv", sep=" ")
+
+record_stop_time = perf_counter()
+print(f"\t{record_stop_time - record_start_time} seconds")
