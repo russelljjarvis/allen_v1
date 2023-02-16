@@ -107,7 +107,7 @@ for nodes, node_types in node_files:
         # dynamics params i.e. if nodes aren't virtual, otherwise just by population name
         group_cols = (["pop_name", "dynamics_params"] if "dynamics_params" in node_types
                       else ["pop_name"])
-    
+
         # Add list of tuples containing node ids and grouping terms to dictionary
         pop_node_dict[name] = [(df.index.to_numpy(), g)
                                for g, df in pop_df.groupby(group_cols)]
@@ -129,11 +129,11 @@ for name, input in cfg.inputs.items():
     # Check input is of supported type
     assert input["input_type"] == "spikes"
     assert input["module"] == "h5"
-    
+
     # 'node_set' CAN be used for something else but, 
     # here, it appears to be used for specifying population
     assert input["node_set"] in pop_node_dict
-    
+
     # Open spike file
     input_dict[input["node_set"]] = File(input["input_file"], "r")
 
@@ -148,11 +148,11 @@ for edges, edge_types in edge_files:
         target_node_pop = pop["target_node_id"].attrs["node_population"]
         print(f"\t\t{name} ({source_node_pop}->{target_node_pop})")
         start_time = perf_counter()
-        
+
         # Lookup source and target nodes
         source_nodes = node_id_lookup[source_node_pop][:][pop["source_node_id"][()]]
         target_nodes = node_id_lookup[target_node_pop][:][pop["target_node_id"][()]]
-        
+
         # Build dataframe from required edge data
         pop_df = pd.DataFrame(data={"edge_group_id": pop["edge_group_id"],
                                     "edge_group_index": pop["edge_group_index"],
@@ -186,10 +186,10 @@ for edges, edge_types in edge_files:
         print(f"\t\t\tBuilt edge dictionaries in {perf_counter() - start_time} seconds")
 
 # Create model and set timestamp
-model = GeNNModel()
+model = GeNNModel("float", "v1_point", generateSimpleErrorHandling=True)
 model.dT = cfg.dt
-model.fuse_postsynaptic_models = True
-model.default_narrow_sparse_ind_enabled = True
+model._model.set_merge_postsynaptic_models(True)
+model._model.set_default_narrow_sparse_ind_enabled(True)
 
 # Loop through node populations
 print("Creating GeNN model")
@@ -198,10 +198,12 @@ genn_neuron_pop_dict = defaultdict(list)
 for pop_name, pops in pop_node_dict.items():
     if pop_name in input_dict:
         # Lookup source and target nodes
-        input_spikes = input_dict[pop_name]["spikes"][pop_name]
-        
+        # **NOTE** SOME spike files seem to have an additional level of indirection here
+        input_spikes = input_dict[pop_name]["spikes"]
+
         # Use node lookup to get population ids and indices corresponding to nodes
-        input_nodes = node_id_lookup[pop_name][:][input_spikes["node_ids"][()]]
+        # **NOTE** in SOME spike files, this field is called "node_ids"
+        input_nodes = node_id_lookup[pop_name][:][input_spikes["gids"][()]]
 
         # Load spike data
         input_spikes_df = pd.DataFrame(data={"timestamps": input_spikes["timestamps"],
@@ -210,7 +212,7 @@ for pop_name, pops in pop_node_dict.items():
 
         # Build dictionary with input spikes grouped by population ID
         pop_input_spikes = {id: (df["timestamps"].to_numpy(), df["pop_index"].to_numpy())
-                            for id, df in input_spikes_df.groupby("pop_id")
+                            for id, df in input_spikes_df.groupby("pop_id")}
 
     # Loop through homogeneous GeNN populations within this
     for pop_id, (pop_nodes, pop_grouping) in enumerate(pops):
