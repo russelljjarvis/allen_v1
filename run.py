@@ -123,9 +123,19 @@ for nodes, node_types in node_files:
             node_id_lookup[name]["index"][indices] = np.arange(len(indices))
 
 # Loop through inputs provided by config
-print("\Inputs")
-for input in cfg.inputs:
-    print(input)
+print("\tInputs")
+input_dict = {}
+for name, input in cfg.inputs.items():
+    # Check input is of supported type
+    assert input["input_type"] == "spikes"
+    assert input["module"] == "h5"
+    
+    # 'node_set' CAN be used for something else but, 
+    # here, it appears to be used for specifying population
+    assert input["node_set"] in pop_node_dict
+    
+    # Open spike file
+    input_dict[input["node_set"]] = File(input["input_file"], "r")
 
 # Loop through edge files
 print("\tEdges")
@@ -186,9 +196,26 @@ print("Creating GeNN model")
 print("\tCreating GeNN neuron populations")
 genn_neuron_pop_dict = defaultdict(list)
 for pop_name, pops in pop_node_dict.items():
+    if pop_name in input_dict:
+        # Lookup source and target nodes
+        input_spikes = input_dict[pop_name]["spikes"][pop_name]
+        
+        # Use node lookup to get population ids and indices corresponding to nodes
+        input_nodes = node_id_lookup[pop_name][:][input_spikes["node_ids"][()]]
+
+        # Load spike data
+        input_spikes_df = pd.DataFrame(data={"timestamps": input_spikes["timestamps"],
+                                             "pop_index": input_nodes["index"],
+                                             "pop_id": input_nodes["id"]})
+
+        # Build dictionary with input spikes grouped by population ID
+        pop_input_spikes = {id: (df["timestamps"].to_numpy(), df["pop_index"].to_numpy())
+                            for id, df in input_spikes_df.groupby("pop_id")
+
     # Loop through homogeneous GeNN populations within this
     for pop_id, (pop_nodes, pop_grouping) in enumerate(pops):
         assert len(pop_grouping) > 0
+        num_neurons = len(pop_nodes)
         genn_pop_name = f"{pop_name}_{pop_grouping[0]}_{pop_id}"
 
         # If population has dynamics
@@ -198,13 +225,31 @@ for pop_name, pops in pop_node_dict.items():
             
             # Add population
             genn_pop = model.add_neuron_population(
-                genn_pop_name, len(pop_nodes), genn_models.glif3,
+                genn_pop_name, num_neurons, genn_models.glif3,
                 param_vals, var_vals)
+        # Otherwise
         else:
-            # **TEMP**
+            # Check that input spikes were read for this population
+            assert pop_id in pop_input_spikes
+            
+            # Calculate number of spikes per-neuron and then cumulative index
+            end_spikes = np.cumsum(np.bincount(pop_input_spikes[pop_id][1], 
+                                   minlength=num_neurons))
+            assert len(end_spikes) == num_neurons
+            
+            # Build start spikes from end spikes
+            start_spikes = np.empty_like(end_spikes)
+            start_spikes[0] = 0
+            start_spikes[1:] = end_spikes[:-1]
+
+            # Sort events first by neuron id and then by time and use to order spike times
+            spike_times = pop_input_spikes[pop_id][0][np.lexsort(pop_input_spikes[pop_id])]
+
+            # Build spike source array
             genn_pop = model.add_neuron_population(
-                genn_pop_name, len(pop_nodes), "SpikeSource",
-                {}, {})
+                genn_pop_name, num_neurons, "SpikeSourceArray",
+                {}, {"startSpike": start_spikes, "endSpike": end_spikes})
+            genn_pop.set_extra_global_param("spikeTimes",  spike_times)
         
         # Add to dictionary
         # **NOTE** indexing will be the same as pop_node_dict
