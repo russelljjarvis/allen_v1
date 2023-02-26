@@ -2,11 +2,11 @@ import json
 import os
 import numpy as np
 import pandas as pd
-import genn_models
+#import genn_models
 
 from h5py import File
 from sonata.config import SonataConfig
-from pygenn.genn_model import GeNNModel
+#from pygenn.genn_model import GeNNModel
 
 from collections import defaultdict, namedtuple
 from os import chdir
@@ -68,7 +68,8 @@ def get_static_synapse_receptor_index(cfg, dynamics_params):
 node_id_lookup_dtype = np.dtype([("id", np.uint32), ("index", np.uint32)])
 
 # Open top-level Sonata configu
-chdir("v1_point")
+#chdir("../")
+#chdir("v1_point")
 cfg = SonataConfig.from_json("config.json")
 
 
@@ -138,229 +139,269 @@ for name, input in cfg.inputs.items():
     # 'node_set' CAN be used for something else but, 
     # here, it appears to be used for specifying population
     assert input["node_set"] in pop_node_dict
-
+    #print(input["input_file"])
     # Open spike file
     input_dict[input["node_set"]] = File(input["input_file"], "r")
 
 edge_read_start_time = perf_counter()
 print(f"\t\t{edge_read_start_time - input_read_start_time} seconds")
 
-# Loop through edge files
-print("\tEdges")
-pop_edge_dict = {}
-for edges, edge_types in edge_files:
-    # Loop through populations in each one
-    # **NOTE** these aren't populations in the GeNN/PyNN sense
-    for name, pop in edges["edges"].items():
-        source_node_pop = pop["source_node_id"].attrs["node_population"]
-        target_node_pop = pop["target_node_id"].attrs["node_population"]
-        print(f"\t\t{name} ({source_node_pop}->{target_node_pop})")
+def get_model():
 
-        # Lookup source and target nodes
-        source_nodes = node_id_lookup[source_node_pop][:][pop["source_node_id"][()]]
-        target_nodes = node_id_lookup[target_node_pop][:][pop["target_node_id"][()]]
+        # Loop through edge files
+    #print("\tEdges")
+    pop_edge_dict = {}
 
-        # Build dataframe from required edge data
-        pop_df = pd.DataFrame(data={"edge_group_id": pop["edge_group_id"],
-                                    "edge_group_index": pop["edge_group_index"],
-                                    "edge_type_id": pop["edge_type_id"],
-                                    "source_pop_index": source_nodes["index"],
-                                    "source_pop_id": source_nodes["id"],
-                                    "target_pop_index": target_nodes["index"],
-                                    "target_pop_id": target_nodes["id"]})
+    # Loop through edge files
+    print("\tEdges")
+    pop_edge_dict = {}
+    for edges, edge_types in edge_files:
+        # Loop through populations in each one
+        # **NOTE** these aren't populations in the GeNN/PyNN sense
+        for name, pop in edges["edges"].items():
+            source_node_pop = pop["source_node_id"].attrs["node_population"]
+            target_node_pop = pop["target_node_id"].attrs["node_population"]
+            print(f"\t\t{name} ({source_node_pop}->{target_node_pop})")
 
-        # Group by group ID
-        for group_id, pop_group_df in pop_df.groupby("edge_group_id"):
-            print(f"\t\t\tGroup {group_id}")
+            # Lookup source and target nodes
+            source_nodes = node_id_lookup[source_node_pop][:][pop["source_node_id"][()]]
+            target_nodes = node_id_lookup[target_node_pop][:][pop["target_node_id"][()]]
 
-            # Build dataframe from required group data
-            group = pop[str(group_id)]
-            group_df = pd.DataFrame(data={"syn_weight": group["syn_weight"]})
+            # Build dataframe from required edge data
+            pop_df = pd.DataFrame(data={"edge_group_id": pop["edge_group_id"],
+                                        "edge_group_index": pop["edge_group_index"],
+                                        "edge_type_id": pop["edge_type_id"],
+                                        "source_pop_index": source_nodes["index"],
+                                        "source_pop_id": source_nodes["id"],
+                                        "target_pop_index": target_nodes["index"],
+                                        "target_pop_id": target_nodes["id"]})
 
-            # Join with pop_df
-            # **THINK** is this right sort of join
-            pop_group_df = pop_group_df.join(group_df, on="edge_group_index")
+            # Group by group ID
+            for group_id, pop_group_df in pop_df.groupby("edge_group_id"):
+                print(f"\t\t\tGroup {group_id}")
 
-            # Join with edge types
-            pop_group_df = pop_group_df.join(edge_types, on="edge_type_id")
+                # Build dataframe from required group data
+                group = pop[str(group_id)]
+                #import pdb
+                #pdb.set_trace()
+                group_df = pd.DataFrame(data={"syn_weight": group["syn_weight"]})
 
-            # Group by delay and; source and target population id
-            hom_pops = [grp + (df["source_pop_index"].to_numpy(), df["target_pop_index"].to_numpy(), df["syn_weight"].to_numpy())
-                        for grp, df in pop_group_df.groupby(["delay", "dynamics_params", 
-                                                             "source_pop_id", "target_pop_id"])]
-            pop_edge_dict[(name, source_node_pop, target_node_pop)] = hom_pops 
-            print(f"\t\t\t\t{len(pop_group_df)} edges in {len(hom_pops)} homogeneous populations")
+                # Join with pop_df
+                # **THINK** is this right sort of join
+                pop_group_df = pop_group_df.join(group_df, on="edge_group_index")
 
-neuron_create_start_time = perf_counter()
-print(f"\t\t{neuron_create_start_time - edge_read_start_time} seconds")
+                # Join with edge types
+                pop_group_df = pop_group_df.join(edge_types, on="edge_type_id")
 
-# Create model and set timestamp
-model = GeNNModel("float", "v1_point", generateSimpleErrorHandling=True)
-model.dT = cfg.dt
-model._model.set_merge_postsynaptic_models(True)
-model._model.set_default_narrow_sparse_ind_enabled(True)
+                # Group by delay and; source and target population id
+                hom_pops = [grp + (df["source_pop_index"].to_numpy(), df["target_pop_index"].to_numpy(), df["syn_weight"].to_numpy())
+                            for grp, df in pop_group_df.groupby(["delay", "dynamics_params", 
+                                                                "source_pop_id", "target_pop_id"])]
+                pop_edge_dict[(name, source_node_pop, target_node_pop)] = hom_pops 
+                print(f"\t\t\t\t{len(pop_group_df)} edges in {len(hom_pops)} homogeneous populations")
 
-# Loop through node populations
-print("Creating GeNN model")
-print("\tCreating GeNN neuron populations")
-genn_neuron_pop_dict = defaultdict(list)
-for pop_name, pops in pop_node_dict.items():
-    if pop_name in input_dict:
-        # Lookup source and target nodes
-        # **NOTE** SOME spike files seem to have an additional level of indirection here
-        input_spikes = input_dict[pop_name]["spikes"]
+    #neuron_create_start_time = perf_counter()
+    #print(f"\t\t{neuron_create_start_time - edge_read_start_time} seconds")
+    dT = cfg.dt
 
-        # Use node lookup to get population ids and indices corresponding to nodes
-        # **NOTE** in SOME spike files, this field is called "node_ids"
-        input_nodes = node_id_lookup[pop_name][:][input_spikes["gids"][()]]
+    genn_neuron_pop_dict = defaultdict(list)
+    for pop_name, pops in pop_node_dict.items():
+        if pop_name in input_dict:
+            # Lookup source and target nodes
+            # **NOTE** SOME spike files seem to have an additional level of indirection here
+            input_spikes = input_dict[pop_name]["spikes"]
 
-        # Load spike data
-        input_spikes_df = pd.DataFrame(data={"timestamps": input_spikes["timestamps"],
-                                             "pop_index": input_nodes["index"],
-                                             "pop_id": input_nodes["id"]})
-        # Build dictionary with input spikes grouped by population ID
-        pop_input_spikes = {id: (df["timestamps"].to_numpy(), df["pop_index"].to_numpy())
-                            for id, df in input_spikes_df.groupby("pop_id")}
+            # Use node lookup to get population ids and indices corresponding to nodes
+            # **NOTE** in SOME spike files, this field is called "node_ids"
+            input_nodes = node_id_lookup[pop_name][:][input_spikes["gids"][()]]
 
-    # Loop through homogeneous GeNN populations within this
-    for pop_id, (pop_nodes, pop_grouping) in enumerate(pops):
-        assert len(pop_grouping) > 0
-        num_neurons = len(pop_nodes)
-        genn_pop_name = f"{pop_name}_{pop_grouping[0]}_{pop_id}"
+            # Load spike data
+            input_spikes_df = pd.DataFrame(data={"timestamps": input_spikes["timestamps"],
+                                                "pop_index": input_nodes["index"],
+                                                "pop_id": input_nodes["id"]})
+            # Build dictionary with input spikes grouped by population ID
+            pop_input_spikes = {id: (df["timestamps"].to_numpy(), df["pop_index"].to_numpy())
+                                for id, df in input_spikes_df.groupby("pop_id")}
 
-        # If population has dynamics
-        if len(pop_grouping) == 2:
-            # Convert dynamics_params to GeNN parameter and variable values
-            param_vals, var_vals = get_glif3_param_val_vars(cfg, pop_grouping[1])
+        # Loop through homogeneous GeNN populations within this
+        for pop_id, (pop_nodes, pop_grouping) in enumerate(pops):
+            assert len(pop_grouping) > 0
+            num_neurons = len(pop_nodes)
+            genn_pop_name = f"{pop_name}_{pop_grouping[0]}_{pop_id}"
 
-            # Add population
-            genn_pop = model.add_neuron_population(
-                genn_pop_name, num_neurons, genn_models.glif3,
-                param_vals, var_vals)
+            # If population has dynamics
+            if len(pop_grouping) == 2:
+                # Convert dynamics_params to GeNN parameter and variable values
+                param_vals, var_vals = get_glif3_param_val_vars(cfg, pop_grouping[1])
 
-            # Turn on spike recording
-            genn_pop.spike_recording_enabled = True
-        # Otherwise
-        else:
-            # Check that input spikes were read for this population
-            assert pop_id in pop_input_spikes
+                # Add population
+                #genn_pop = model.add_neuron_population(
+                #    genn_pop_name, num_neurons, genn_models.glif3,
+                #    param_vals, var_vals)
 
-            # Calculate number of spikes per-neuron and then cumulative index
-            end_spikes = np.cumsum(np.bincount(pop_input_spikes[pop_id][1], 
-                                   minlength=num_neurons))
-            assert len(end_spikes) == num_neurons
+                # Turn on spike recording
+                #genn_pop.spike_recording_enabled = True
+            # Otherwise
+            else:
+                # Check that input spikes were read for this population
+                assert pop_id in pop_input_spikes
 
-            # Build start spikes from end spikes
-            start_spikes = np.empty_like(end_spikes)
-            start_spikes[0] = 0
-            start_spikes[1:] = end_spikes[:-1]
+                # Calculate number of spikes per-neuron and then cumulative index
+                end_spikes = np.cumsum(np.bincount(pop_input_spikes[pop_id][1], 
+                                    minlength=num_neurons))
+                assert len(end_spikes) == num_neurons
 
-            # Sort events first by neuron id and then by time and use to order spike times
-            spike_times = pop_input_spikes[pop_id][0][np.lexsort(pop_input_spikes[pop_id])]
+                # Build start spikes from end spikes
+                start_spikes = np.empty_like(end_spikes)
+                start_spikes[0] = 0
+                start_spikes[1:] = end_spikes[:-1]
 
-            # Build spike source array
-            genn_pop = model.add_neuron_population(
-                genn_pop_name, num_neurons, "SpikeSourceArray",
-                {}, {"startSpike": start_spikes, "endSpike": end_spikes})
-            genn_pop.set_extra_global_param("spikeTimes",  spike_times)
+                # Sort events first by neuron id and then by time and use to order spike times
+                spike_times = pop_input_spikes[pop_id][0][np.lexsort(pop_input_spikes[pop_id])]
 
-        # Add to dictionary
-        # **NOTE** indexing will be the same as pop_node_dict
-        genn_neuron_pop_dict[pop_name].append(genn_pop)
+                # Build spike source array
+                #genn_pop = model.add_neuron_population(
+                #    genn_pop_name, num_neurons, "SpikeSourceArray",
+                #    {}, {"startSpike": start_spikes, "endSpike": end_spikes})
+                #genn_pop.set_extra_global_param("spikeTimes",  spike_times)
 
-synapse_create_start_time = perf_counter()
-print(f"\t\t{synapse_create_start_time - neuron_create_start_time} seconds")
+            # Add to dictionary
+            # **NOTE** indexing will be the same as pop_node_dict
+            #genn_neuron_pop_dict[pop_name].append(genn_pop)
+    return (spike_times,pop_node_dict,pop_edge_dict,pop_group_df,pop_df)
 
-# Loop through edge populations
-print("\tCreating GeNN synapse populations")
-genn_synapse_pop_dict = defaultdict(list)
-for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
-    # Loop through homogeneous GeNN populations within this
-    # **TODO** namedtuple
-    for pop_id, (delay, dynamics_params, source_pop_id, target_pop_id,
-                 source_pop_index, target_pop_index, syn_weight) in enumerate(pops):
-        genn_pop_name = f"{pop_name}_{pop_id}"
+def node_id_lookup_():
+    return (node_id_lookup,edge_files)
 
-        # Read receptor index from dynamics params
-        receptor_index = get_static_synapse_receptor_index(cfg, dynamics_params)
+def get_model_minimal():
+    #print("\tEdges")
+    #pop_edge_dict = {}
+    srcs_ = []
+    tgts_ = []
+    for edges, edge_types in edge_files:
+        # Loop through populations in each one
+        # **NOTE** these aren't populations in the GeNN/PyNN sense
+        srcs = []
+        tgts = []
 
-        # Get dynamics params used by target population
-        target_dynamics_params = pop_node_dict[target_node_pop][target_pop_id][1][1]
+        for name, pop in edges["edges"].items():
+            source_node_pop = pop["source_node_id"].attrs["node_population"]
+            target_node_pop = pop["target_node_id"].attrs["node_population"]
+            #print(f"\t\t{name} ({source_node_pop}->{target_node_pop})")
+            # Lookup source and target nodes
+            source_nodes = node_id_lookup[source_node_pop][:][pop["source_node_id"][()]]
+            target_nodes = node_id_lookup[target_node_pop][:][pop["target_node_id"][()]]
+            print(source_nodes)
+            #print("number synapses")
+            #print(dir(source_nodes))
+            #print(type(source_nodes))
+            print(len(source_nodes))
+            print(len(target_nodes))
+            srcs.append(source_nodes)
+            tgts.append(target_nodes)
+        srcs_.append(srcs)
+        tgts_.append(tgts)
+    print(len(srcs_[1]))
+    print(len(tgts_[1]))
 
-        # From these, read tau_syn for this synapse group
-        tau_syn = get_glif3_tau_syn(cfg, target_dynamics_params)
+    return (srcs_,tgts_)
 
-        # Round delay
-        delay = int(round(delay / cfg.dt))
+def dontdo():
+    synapse_create_start_time = perf_counter()
+    print(f"\t\t{synapse_create_start_time - neuron_create_start_time} seconds")
 
-        # Convert weight from nS to uS
-        syn_weight = syn_weight / 1000.0
+    # Loop through edge populations
+    #print("\tCreating GeNN synapse populations")
+    genn_synapse_pop_dict = defaultdict(list)
+    for (pop_name, source_node_pop, target_node_pop), pops in pop_edge_dict.items():
+        # Loop through homogeneous GeNN populations within this
+        # **TODO** namedtuple
+        for pop_id, (delay, dynamics_params, source_pop_id, target_pop_id,
+                    source_pop_index, target_pop_index, syn_weight) in enumerate(pops):
+            genn_pop_name = f"{pop_name}_{pop_id}"
+            print(dynamics_params)
+            print(cfg)
+            # Read receptor index from dynamics params
+            receptor_index = get_static_synapse_receptor_index(cfg, dynamics_params)
 
-        # **TODO** if all weights are the same, use SPARSE_GLOBALG
+            # Get dynamics params used by target population
+            target_dynamics_params = pop_node_dict[target_node_pop][target_pop_id][1][1]
 
-        # Add population to model
-        pop = model.add_synapse_population(
-            genn_pop_name, "SPARSE_INDIVIDUALG", delay,
-            genn_neuron_pop_dict[source_node_pop][source_pop_id],
-            genn_neuron_pop_dict[target_node_pop][target_pop_id],
-            "StaticPulse", {}, {"g": syn_weight}, {}, {},
-            genn_models.psc_alpha, {"tau": tau_syn[receptor_index - 1]}, {"x": 0.0})
+            # From these, read tau_syn for this synapse group
+            tau_syn = get_glif3_tau_syn(cfg, target_dynamics_params)
 
-        # Set sparse connectivity
-        pop.set_sparse_connections(source_pop_index, target_pop_index)
+            # Round delay
+            delay = int(round(delay / cfg.dt))
 
-build_start_time = perf_counter()
-print(f"\t\t{build_start_time - synapse_create_start_time} seconds")
+            # Convert weight from nS to uS
+            syn_weight = syn_weight / 1000.0
+            
+            # **TODO** if all weights are the same, use SPARSE_GLOBALG
 
-# Build model
-print("Building GeNN model")
-mem_usage = model.build()
-print(f"\tModel requires {mem_usage.get_device_mbytes()}MB device memory and {mem_usage.get_host_mbytes()}MB host memory")
+            # Add population to model
+            #pop = model.add_synapse_population(
+            #    genn_pop_name, "SPARSE_INDIVIDUALG", delay,
+            #    genn_neuron_pop_dict[source_node_pop][source_pop_id],
+            #    genn_neuron_pop_dict[target_node_pop][target_pop_id],
+            #    "StaticPulse", {}, {"g": syn_weight}, {}, {},
+            #    genn_models.psc_alpha, {"tau": tau_syn[receptor_index - 1]}, {"x": 0.0})
 
-load_start_time = perf_counter()
-print(f"\t{load_start_time - build_start_time} seconds")
+            # Set sparse connectivity
+            #pop.set_sparse_connections(source_pop_index, target_pop_index)
 
-# Load model
-print("Loading GeNN model")
-duration_ms = cfg.run["duration"]
-model.load(num_recording_timesteps=int(round(duration_ms / cfg.dt)))
+    build_start_time = perf_counter()
+    print(f"\t\t{build_start_time - synapse_create_start_time} seconds")
 
-run_start_time = perf_counter()
-print(f"\t{run_start_time - load_start_time} seconds")
+    # Build model
+    print("Building GeNN model")
+    #mem_usage = model.build()
+    #print(f"\tModel requires {mem_usage.get_device_mbytes()}MB device memory and {mem_usage.get_host_mbytes()}MB host memory")
 
-# Simulate model
-print(f"Simulating GeNN model for {duration_ms}ms")
-while model.t < duration_ms:
-     model.step_time()
+    load_start_time = perf_counter()
+    print(f"\t{load_start_time - build_start_time} seconds")
 
-model.pull_recording_buffers_from_device()
+    # Load model
+    print("Loading GeNN model")
+    duration_ms = cfg.run["duration"]
+    #model.load(num_recording_timesteps=int(round(duration_ms / cfg.dt)))
 
-record_start_time = perf_counter()
-print(f"\t{record_start_time - run_start_time} seconds")
+    run_start_time = perf_counter()
+    print(f"\t{run_start_time - load_start_time} seconds")
 
-# Loop through population
-print("Saving spikes")
-output_spike_timestamps = []
-output_spike_node_ids = []
-output_spike_pop_names = []
-for pop_name, genn_pops in genn_neuron_pop_dict.items():
-    # Loop through homogeneous GeNN populations
-    for pop_id, genn_pop in enumerate(genn_pops):
-        # If spike recording is enabled
-        if genn_pop.spike_recording_enabled:
-            # Extract spike recording data from population
-            st, sid = genn_pop.spike_recording_data
+    # Simulate model
+    print(f"Simulating GeNN model for {duration_ms}ms")
+    #while model.t < duration_ms:
+    #     model.step_time()
 
-            # Add numpy arrays to lists
-            output_spike_timestamps.append(st)
-            output_spike_node_ids.append(pop_node_dict[pop_name][pop_id][0][sid])
-            output_spike_pop_names.extend([pop_name] * len(st))
+    #model.pull_recording_buffers_from_device()
 
-# Assemble dataframe and write to CSV
-output_spike_df = pd.DataFrame(data={"timestamps": np.concatenate(output_spike_timestamps),
-                                     "population": output_spike_pop_names,
-                                     "node_ids": np.concatenate(output_spike_node_ids)})
-output_spike_df.to_csv("spikes.csv", sep=" ")
+    record_start_time = perf_counter()
+    print(f"\t{record_start_time - run_start_time} seconds")
 
-record_stop_time = perf_counter()
-print(f"\t{record_stop_time - record_start_time} seconds")
+    # # Loop through population
+    # print("Saving spikes")
+    # output_spike_timestamps = []
+    # output_spike_node_ids = []
+    # output_spike_pop_names = []
+    # for pop_name, genn_pops in genn_neuron_pop_dict.items():
+    #     # Loop through homogeneous GeNN populations
+    #     for pop_id, genn_pop in enumerate(genn_pops):
+    #         # If spike recording is enabled
+    #         if genn_pop.spike_recording_enabled:
+    #             # Extract spike recording data from population
+    #             st, sid = genn_pop.spike_recording_data
+
+    #             # Add numpy arrays to lists
+    #             output_spike_timestamps.append(st)
+    #             output_spike_node_ids.append(pop_node_dict[pop_name][pop_id][0][sid])
+    #             output_spike_pop_names.extend([pop_name] * len(st))
+
+    # # Assemble dataframe and write to CSV
+    # output_spike_df = pd.DataFrame(data={"timestamps": np.concatenate(output_spike_timestamps),
+    #                                      "population": output_spike_pop_names,
+    #                                      "node_ids": np.concatenate(output_spike_node_ids)})
+    # output_spike_df.to_csv("spikes.csv", sep=" ")
+
+    # record_stop_time = perf_counter()
+    # print(f"\t{record_stop_time - record_start_time} seconds")
+
