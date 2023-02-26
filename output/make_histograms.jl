@@ -93,11 +93,11 @@ function PSTH(nodes,times)
 end
 =#
 
-function filter(nodes,times)
+function filter(nodes,times,before,after)
     n_ = []
     t_ = []
     for (i,j) in zip(nodes,times)
-        if i <= 50
+        if i>= after &  i <= before
             append!(n_,i)
             append!(t_,j)
 
@@ -196,19 +196,55 @@ function bespoke_2dhist(nbins,nodes,times,fname=nothing)
         push!(templ[n+1],times[cnt])    
         #@show(templ[n+1])
     end
-    data = Matrix{Float64}(undef, ns+1, Int(length(temp_vec)-1))
+    list_of_artifact_rows = []
+    #data = Matrix{Float64}(undef, ns+1, Int(length(temp_vec)-1))
     for (ind,t) in enumerate(templ)
         psth = fit(Histogram,t,temp_vec)
-        data[ind,:] = psth.weights[:]
+        #data[ind,:] = psth.weights[:]
+        if sum(psth.weights[:]) == 0.0
+            append!(list_of_artifact_rows,ind)
+        end
     end
-    data = view(data, vec(mapslices(col -> any(col .!= 0), data, dims = 2)), :)
+    @show(list_of_artifact_rows)
+    adjusted_length = ns+1-length(list_of_artifact_rows)
+    data = Matrix{Float64}(undef, adjusted_length, Int(length(temp_vec)-1))
+    cnt = 1
+    for t in templ
+        psth = fit(Histogram,t,temp_vec)        
+        if sum(psth.weights[:]) != 0.0
+            data[cnt,:] = psth.weights[:]
+            @assert sum(data[cnt,:])!=0
+            cnt +=1
+        end
+    end
+
+    ##
+    #
+    ##
+    #data = view(data, vec(mapslices(col -> any(col .!= 0), data, dims = 2)), :)[:]
+    #@show(first(data[:]))
+    #@show(last(data[:]))
+    ##
+    # All neuron s are block normalised according to a global mean/std rate
+    ##
+
+    #data .= (data .- StatsBase.mean(data))./StatsBase.std(data)
+    #@show(size(data))
     return data
 end
 
 
 function normalised_2dhist(data)
-
+    ##
+    # Each neuron is indipendently normalised according to its own rate
+    ##
+    
+    #for (ind,row) in enumerate(eachrow(data))
+    #    data[ind,:] .= row .- StatsBase.mean(row)./sum(row)
+    #    @show(data[ind,:]) 
+    #end
     data = data[:,:]./maximum(data[:,:])
+    #@show(data)
     return data
 end
 #println("Delayed y")
