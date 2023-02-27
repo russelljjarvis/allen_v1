@@ -199,6 +199,8 @@ Plots.savefig("heatmap_normalised.png")
 
 nbins = 1425.0
 data = bespoke_2dhist(nbins,nodes,times)
+@show(methods(bespoke_2dhist))
+
 _,res_jl = bespoke_umap(data)
 Plots.plot(heatmap(data),legend = false, normalize=:pdf)
 Plots.savefig("detailed_heatmap.png")
@@ -208,6 +210,7 @@ using OnlinePCA: readcsv, writecsv
 using Distributions
 using DelimitedFiles
 out_gd4 = PCAOnline(data)
+@show(methods(PCAOnline))
 #nbins = 1425.0
 #nbins = 2425.0
 #nbins = 1425.0
