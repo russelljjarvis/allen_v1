@@ -138,11 +138,11 @@ function bespoke_umap(data)
     # Assuming 3 EEG
     ##
     #n_components = 3
-    res_jl = umap(data,n_neighbors=3, min_dist=0.001, n_epochs=450)
+    res_jl = umap(data,n_neighbors=4, min_dist=0.001, n_epochs=450)
     Plots.plot(scatter(res_jl[1,:], res_jl[2,:], title="Spike Rate: UMAP", marker=(2, 2, :auto, stroke(0.0005))))# |> display
     Plots.savefig("UMAP_for_pabloxx.png")
     data = data'[:,:]
-    res_jl = umap(data,n_neighbors=3, min_dist=0.001, n_epochs=450)
+    res_jl = umap(data,n_neighbors=4, min_dist=0.001, n_epochs=450)
     Plots.plot(scatter(res_jl[1,:], res_jl[2,:], title="Spike Rate: UMAP", marker=(2, 2, :auto, stroke(0.0005))))# |> display
     Plots.savefig("UMAP_for_pablo_transpose.png")
     return data,res_jl
@@ -196,16 +196,15 @@ function bespoke_2dhist(nbins,nodes,times,fname=nothing)
         push!(templ[n+1],times[cnt])    
         #@show(templ[n+1])
     end
-    list_of_artifact_rows = []
+    list_of_artifact_rows = [] # These will be deleted as they bias analysis.
     #data = Matrix{Float64}(undef, ns+1, Int(length(temp_vec)-1))
     for (ind,t) in enumerate(templ)
         psth = fit(Histogram,t,temp_vec)
-        #data[ind,:] = psth.weights[:]
         if sum(psth.weights[:]) == 0.0
             append!(list_of_artifact_rows,ind)
         end
     end
-    @show(list_of_artifact_rows)
+    #@show(list_of_artifact_rows)
     adjusted_length = ns+1-length(list_of_artifact_rows)
     data = Matrix{Float64}(undef, adjusted_length, Int(length(temp_vec)-1))
     cnt = 1
@@ -243,23 +242,33 @@ function normalised_2dhist(data)
     #    data[ind,:] .= row .- StatsBase.mean(row)./sum(row)
     #    @show(data[ind,:]) 
     #end
-    data = data[:,:]./maximum(data[:,:])
+
+    data = data[:,:].- StatsBase.mean(data[:,:])./StatsBase.std(data[:,:])
+
+    #data = data[:,:]./maximum(data[:,:])
     #@show(data)
     return data
 end
 #println("Delayed y")
-
+#=
 #(n_,t_) = filter(nodes,times)
 PSTH0(nodes,times) 
 nbins = 425.0
 #nbins = 1425.0
 data = bespoke_2dhist(nbins,nodes,times)
+Plots.plot(heatmap(data),legend = false, normalize=:pdf)
+Plots.savefig("heatmap_not_normalised.png")
 datan = normalised_2dhist(data)
 Plots.plot(heatmap(datan),legend = false, normalize=:pdf)
 Plots.savefig("heatmap_normalised.png")
+=#
+#nbins = 200.0
+nbins = 4000.0
 
-nbins = 1425.0
 data = bespoke_2dhist(nbins,nodes,times)
+data = normalised_2dhist(data)
+_,res_jl = bespoke_PCA(data)
+#data = bespoke_2dhist(nbins,nodes,times)
 _,res_jl = bespoke_umap(data)
 Plots.plot(heatmap(data),legend = false, normalize=:pdf)
 Plots.savefig("detailed_heatmap.png")
@@ -270,12 +279,6 @@ Plots.savefig("detailed_heatmap.png")
 #nbins = 1425.0
 #nbins = 325.0
 
-nbins = 100
-
-data = bespoke_2dhist(nbins,nodes,times)
-#println("Delayed 2")
-
-data,res_jl = bespoke_PCA(data)
 
 function corrplot_(data)
     StatsPlots.corrplot(data[1:5,1:5], grid = false, compact=true)
