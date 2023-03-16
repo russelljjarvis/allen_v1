@@ -10,6 +10,29 @@ using MultivariateStats
 using SparseArrays
 
 #=
+using OnlinePCA
+using OnlinePCA: readcsv, writecsv
+using Distributions
+using DelimitedFiles
+out_gd4 = PCAOnline(data)
+@show(methods(PCAOnline))
+
+
+function PCAOnline(data)
+    # CSV
+    tmp = mktempdir()
+    writecsv(joinpath(tmp, "Data.csv"), data)
+
+    # Binarization
+    csv2bin(csvfile=joinpath(tmp, "Data.csv"), binfile=joinpath(tmp, "Data.zst"))
+
+    # Summary of data
+    sumr(binfile=joinpath(tmp, "Data.zst"), outdir=tmp)
+    out_gd4 = gd(input=joinpath(tmp, "Data.zst"), dim=3, scheduling="adagrad", stepsize=1E-0,
+    numepoch=10, rowmeanlist=joinpath(tmp, "Feature_LogMeans.csv"))
+    @show(out_gd4)
+    return out_gd4
+end
 function foo()
     using Conda
     using PyCall
@@ -34,7 +57,7 @@ hf5 = h5open("spikes.h5","r")
 nodes = Vector{Int64}(read(hf5["spikes"]["v1"]["node_ids"]))
 times = Vector{Float64}(read(hf5["spikes"]["v1"]["timestamps"]))
 close(hf5)
-#println("gets here a")
+
 function raster(nodes,times)
     xs = []
     ys = []
@@ -73,25 +96,8 @@ function PSTH0(nodes,times)
     Plots.plot(p1, p2, layout = l,size=size_) 
     savefig("PSTH.png")
 
-    #savefig("PSTH.png")
-
 end
-#=
-function PSTH(nodes,times)
-    #temp = size(nodes)[1]
-    bin_size = 55 # ms
-    bins = collect(1:bin_size:maximum(times))
-    markersize=0.001#ms
-    l = @layout [a ; b]
-    p1 = scatter(times,nodes;bin=bins,label="SpikeTrain",markershape=:vline,markerstrokewidth = 0.015, legend = false)
-    p2 = plot(stephist(times, title="PSTH", legend = false))
-    size_ = (800,600)
 
-    Plots.plot(p1, p2, layout = l,size=size_)
-    savefig("PSTH.png")
-
-end
-=#
 
 function filter(nodes,times,before,after)
     n_ = []
@@ -138,11 +144,11 @@ function bespoke_umap(data)
     # Assuming 3 EEG
     ##
     #n_components = 3
-    res_jl = umap(data,n_neighbors=4, min_dist=0.001, n_epochs=450)
+    res_jl = umap(data,n_neighbors=3, min_dist=0.001, n_epochs=450)
     Plots.plot(scatter(res_jl[1,:], res_jl[2,:], title="Spike Rate: UMAP", marker=(2, 2, :auto, stroke(0.0005))))# |> display
     Plots.savefig("UMAP_for_pabloxx.png")
     data = data'[:,:]
-    res_jl = umap(data,n_neighbors=4, min_dist=0.001, n_epochs=450)
+    res_jl = umap(data,n_neighbors=3, min_dist=0.001, n_epochs=450)
     Plots.plot(scatter(res_jl[1,:], res_jl[2,:], title="Spike Rate: UMAP", marker=(2, 2, :auto, stroke(0.0005))))# |> display
     Plots.savefig("UMAP_for_pablo_transpose.png")
     return data,res_jl
@@ -265,6 +271,7 @@ Plots.savefig("heatmap_normalised.png")
 #nbins = 200.0
 nbins = 4000.0
 
+nbins = 1425.0
 data = bespoke_2dhist(nbins,nodes,times)
 data = normalised_2dhist(data)
 _,res_jl = bespoke_PCA(data)
@@ -279,6 +286,12 @@ Plots.savefig("detailed_heatmap.png")
 #nbins = 1425.0
 #nbins = 325.0
 
+nbins = 100
+
+data = bespoke_2dhist(nbins,nodes,times)
+#println("Delayed 2")
+
+data,res_jl = bespoke_PCA(data)
 
 function corrplot_(data)
     StatsPlots.corrplot(data[1:5,1:5], grid = false, compact=true)
