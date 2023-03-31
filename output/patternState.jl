@@ -30,44 +30,22 @@ function divide_epoch(nodes,times,sw,toi)
             @assert t-toi>=0
             append!(n1,n)
         end
-
     end
-    #for (neuron,t) in zip(n0,t0)
-    #    append!(neuron0[neuron],t)
-    #end
     neuron0 =  Array{}([Float32[] for i in 1:maximum(nodes)+1])
-    #neuron1 =  Array{}([Float32[] for i in 0:maximum(nodes)])
-
     for (neuron,t) in zip(n0,t0)
-        append!(neuron0[neuron],t)
-        
+        append!(neuron0[neuron],t) 
     end
-    #for nx in neuron0
-    #    if length(nx) > 0
-    #        @show(maximum(nx[:]))
-    #        @show(minimum(nx[:]))
-    #    end
-    #end
     neuron0
-    #(t0,n0,t1,n1,neuron0)
-
 end
 
 
 function get_vector_coords(neuron0::Vector{Vector{Float32}}, neuron1::Vector{Vector{Float32}}, self_distances::Vector{Float32})
-
     for (ind,(n0_,n1_)) in enumerate(zip(neuron0,neuron1))        
         if length(n0_) != 0 && length(n1_) != 0
             pooledspikes = vcat(n0_,n1_)
             maxt = maximum(sort!(unique(pooledspikes)))
             t1_ = sort(unique(n0_))
             t0_ = sort(unique(n1_))
-            #@show(minimum(t1_))
-            #@show(minimum(t0_))
-
-            #@show(maximum(t1_))
-            #@show(maximum(t0_))
-
             t, S = SPIKE_distance_profile(t0_,t1_;t0=0,tf = maxt)
             self_distances[ind]=sum(S)
         else
@@ -88,7 +66,6 @@ end
 
 function looped!(times,t0,spk_counts,segment_length,temp)
     doonce = LinRange(0.0, segment_length, temp)[:]
-    #@show(temp,segment_length)
     for (neuron, t) in enumerate(t0)
         times[neuron] = doonce
     end
@@ -99,7 +76,6 @@ function surrogate_to_uniform(times_,segment_length)
     for (neuron, t) in enumerate(times_)
         append!(spk_counts,length(t))
     end
-    #temp=Int64(round(maximum(spk_counts)))
     temp = 4
     looped!(times,times_,spk_counts,segment_length,temp)
     return times
@@ -107,7 +83,7 @@ function surrogate_to_uniform(times_,segment_length)
 end
 
 
-function get_plot()
+function get_plot(;plot_time_chunked_train=false)
     times,nodes = get_()
     division_size = 10
     step_size = maximum(times)/division_size
@@ -126,45 +102,40 @@ function get_plot()
         neuron0 = divide_epoch(nodes,times,sw,toi)    
         self_distances = get_vector_coords(neuron0,t0ref,self_distances)
         mat_of_distances[ind,:] = self_distances
-        #@show(self_distances)
     end
     cs1 = ColorScheme(distinguishable_colors(spike_distance_size, transform=protanopic))
-    
-    #=
-    for (ind,toi) in enumerate(iters)
-        sw = start_windows[ind]
-        (t0,n0,t1,n1) = divide_epoch(nodes,times,sw,toi)
-        self_distances = get_vector_coords(nodes,t0ref,n0ref,t0,n0)
-        mat_of_distances[ind,:] = self_distances
-        o1 = HeatMap(zip(minimum(t0):maximum(t0)/1000.0:maximum(t0),minimum(n0):maximum(n0/1000.0):maximum(n0)) )
-        fit!(o1,zip(t0,convert(Vector{Float64},n0)))
-        p0 = plot(o1, marginals=false, legend=false) 
-        o2 = HeatMap(zip(minimum(t0ref):maximum(t0ref)/1000.0:maximum(t0ref),minimum(n0ref):maximum(n0ref/1000.0):maximum(n0ref)) )
-        fit!(o2,zip(t0ref,convert(Vector{Float64},n0ref)))
-        p1 = plot(o2, marginals=false, legend=false)
-        #push!(PP,p0)
-        #push!(PP,p1)
+    if plot_time_chunked_train
+	    for (ind,toi) in enumerate(iters)
+		sw = start_windows[ind]
+		(t0,n0,t1,n1) = divide_epoch(nodes,times,sw,toi)
+		self_distances = get_vector_coords(nodes,t0ref,n0ref,t0,n0)
+		mat_of_distances[ind,:] = self_distances
+		o1 = HeatMap(zip(minimum(t0):maximum(t0)/1000.0:maximum(t0),minimum(n0):maximum(n0/1000.0):maximum(n0)) )
+		fit!(o1,zip(t0,convert(Vector{Float64},n0)))
+		p0 = plot(o1, marginals=false, legend=false) 
+		o2 = HeatMap(zip(minimum(t0ref):maximum(t0ref)/1000.0:maximum(t0ref),minimum(n0ref):maximum(n0ref/1000.0):maximum(n0ref)) )
+		fit!(o2,zip(t0ref,convert(Vector{Float64},n0ref)))
+		p1 = plot(o2, marginals=false, legend=false)
+		#push!(PP,p0)
+		#push!(PP,p1)
+	    end
+	    normalize!(mat_of_distances[:,:])
+	    p = plot()#title = "Plot 1")
     end
-    =#
-    #normalize!(mat_of_distances[:,:])
-    #p = plot()#title = "Plot 1")
-
-    #p=nothing
     for (ind,_) in enumerate(eachrow(mat_of_distances))
         temp = (mat_of_distances[ind,:].- mean(mat_of_distances[ind,:]))./std(mat_of_distances[ind,:])
-        #@show(ind)
-        #plot(temp) |> display
         n = length(temp)
         θ = LinRange(0, 2pi, n)
-        #if ind==1
-        #    p = plot(θ, temp, proj=:polar,color=cs1[ind]) |>display#, layout = length(mat_of_distances))
-        #@else 
-        plot(θ,temp, proj=:polar,color=cs1[ind]) |>display
-        #end
-        #plot(θ,mat_of_distances[ind,:], proj=:polar,color=cs1[ind])
-        #savefig("radar_categories_$ind.png")
-        #ind+=1 
-
+	if plot_time_chunked_train		
+		#if ind==1
+		#    p = plot(θ, temp, proj=:polar,color=cs1[ind]) |>display#, layout = length(mat_of_distances))
+		#@else 
+		plot(θ,temp, proj=:polar,color=cs1[ind]) |>display
+		#end
+		#plot(θ,mat_of_distances[ind,:], proj=:polar,color=cs1[ind])
+		#savefig("radar_categories_$ind.png")
+		#ind+=1 
+	end
     end
 
     prev = mat_of_distances[1,:].- mean(mat_of_distances[1,:])./std(mat_of_distances[1,:])
